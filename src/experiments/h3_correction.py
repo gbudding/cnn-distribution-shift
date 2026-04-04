@@ -183,7 +183,7 @@ def main(args):
 
     test_path = os.path.join(args.datalist, "test.txt")
     configs   = get_all_corruption_configs()
-    methods   = ["no_correction", "channel_norm", "bn_adapt"]
+    methods   = ["no_correction", "channel_norm", "bn_adapt", "tent"]
 
     all_results = []
 
@@ -208,11 +208,13 @@ def main(args):
         # Run correction methods
         s1, l1 = run_channel_norm(model_orig, loader, device)
         s2, l2 = run_bn_adapt(model_orig, loader, device)
+        s3, l3 = run_tent(model_orig, loader, device)
 
         method_scores = {
             "no_correction": (no_corr_scores, no_corr_labels),
             "channel_norm" : (s1, l1),
             "bn_adapt"     : (s2, l2),
+            "tent"         : (s3, l3),
         }
 
         # Compute metrics
@@ -236,12 +238,14 @@ def main(args):
                 "pct_recovery": recovery,
             })
 
-        auc_ch = auc_yt(*yield_threshold_curve(s1))
-        auc_bn = auc_yt(*yield_threshold_curve(s2))
+        auc_ch   = auc_yt(*yield_threshold_curve(s1))
+        auc_bn   = auc_yt(*yield_threshold_curve(s2))
+        auc_tent = auc_yt(*yield_threshold_curve(s3))
         print(f"  {tag:20s}  sev{severity}  | "
               f"no_corr={no_corr_auc:.4f} | "
               f"ch_norm={auc_ch:.4f} | "
-              f"bn_adapt={auc_bn:.4f}")
+              f"bn_adapt={auc_bn:.4f} | "
+              f"tent={auc_tent:.4f}")
 
     # Write CSV
     csv_path   = os.path.join(args.out, "h3_results.csv")
@@ -308,3 +312,73 @@ if __name__ == "__main__":
     parser.add_argument("--out",        required=True)
     args = parser.parse_args()
     main(args)
+
+
+# ------------------------------------------------------------------
+# Method 3 - TENT: Test-Time Entropy Minimisation
+# ------------------------------------------------------------------
+
+def run_tent(model_orig, loader, device, lr=1e-3, steps=1):
+    """
+    TENT: minimise prediction entropy w.r.t. BN affine parameters.
+
+    Protocol:
+    1. Deep-copy model, switch BN layers to train mode
+    2. Collect only BN scale (weight) and shift (bias) as optimisable params
+    3. For each batch: forward pass -> compute entropy -> gradient step
+    4. Collect predictions after adaptation
+
+    Based on: Wang et al. (ICLR 2021), Tent: Fully Test-Time Adaptation
+    by Entropy Minimization.
+
+    Parameters
+    ----------
+    lr    : learning rate for BN affine params (default 1e-3)
+    steps : gradient steps per batch (default 1, as per paper)
+    """
+    model = copy.deepcopy(model_orig)
+    model.to(device)
+
+    # Switch BN layers to train mode, freeze all other params
+    for m in model.modules():
+        if isinstance(m, nn.BatchNorm2d):
+            m.train()
+            m.requires_grad_(True)
+            # Keep running stats fixed — only update affine params
+            m.track_running_stats = False
+        else:
+            m.requires_grad_(False)
+
+    # Collect only BN affine parameters
+    bn_params = []
+    for m in model.modules():
+        if isinstance(m, nn.BatchNorm2d):
+            if m.weight is not None:
+                bn_params.append(m.weight)
+            if m.bias is not None:
+                bn_params.append(m.bias)
+
+    optimizer = torch.optim.Adam(bn_params, lr=lr)
+
+    all_scores, all_labels = [], []
+
+    for images, labels in loader:
+        images = images.to(device)
+
+        # Entropy minimisation steps
+        for _ in range(steps):
+            logits  = model(images)
+            probs   = torch.softmax(logits, dim=1)
+            # Shannon entropy: H = -sum(p * log(p))
+            entropy = -(probs * torch.log(probs + 1e-8)).sum(dim=1).mean()
+            optimizer.zero_grad()
+            entropy.backward()
+            optimizer.step()
+
+        # Collect scores after adaptation
+        with torch.no_grad():
+            probs = torch.softmax(model(images), dim=1)
+        all_scores.append(probs[:, 1].detach().cpu().numpy())
+        all_labels.append(labels.numpy())
+
+    return np.concatenate(all_scores), np.concatenate(all_labels)
