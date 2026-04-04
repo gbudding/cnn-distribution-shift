@@ -137,7 +137,7 @@ def main(args):
     # ---- Load baseline scores -----------------------------------
     baseline_data   = np.load(args.baseline)
     baseline_scores = baseline_data["scores"]
-    bl_auc          = float(np.trapz(baseline_data["yields"],
+    bl_auc          = float(np.trapezoid(baseline_data["yields"],
                                      baseline_data["thresholds"]))
     print(f"Baseline AUC-YT: {bl_auc:.4f}")
     print(f"Baseline score distribution: "
