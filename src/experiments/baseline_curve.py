@@ -94,7 +94,7 @@ def yield_threshold_curve(scores, n_thresholds=1000):
 
 def auc_yt(thresholds, yields):
     """Area under the yield-threshold curve (trapezoidal rule)."""
-    return float(np.trapz(yields, thresholds))
+    return float(np.trapezoid(yields, thresholds))
 
 
 def compute_metrics(scores, labels, threshold=0.5):
