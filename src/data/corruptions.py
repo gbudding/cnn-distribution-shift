@@ -163,6 +163,21 @@ def get_corruption(name: str, severity: int):
                          f"Choose from: brightness, blur, noise")
 
 
+class CombinedCorruption:
+    """
+    Applies a sequence of corruptions in order.
+    Defined at module level so it can be pickled by multiprocessing workers.
+    """
+    def __init__(self, fns):
+        self.fns = fns
+    def __call__(self, img):
+        for fn in self.fns:
+            img = fn(img)
+        return img
+    def __repr__(self):
+        return f"CombinedCorruption({self.fns})"
+
+
 def get_all_corruption_configs():
     """
     Return a list of (name, severity, corruption_callable) for all
@@ -197,21 +212,11 @@ def get_all_corruption_configs():
     ]
     for combo_name, components in combo_defs:
         for sev in range(1, 6):
-            # Build a sequential combination
             parts = [get_corruption(c, sev) for c in components]
-
-            class Combined:
-                def __init__(self, fns):
-                    self.fns = fns
-                def __call__(self, img):
-                    for fn in self.fns:
-                        img = fn(img)
-                    return img
-
             configs.append({
                 "tag"       : combo_name,
                 "severity"  : sev,
-                "corruption": Combined(parts),
+                "corruption": CombinedCorruption(parts),
             })
 
     return configs
