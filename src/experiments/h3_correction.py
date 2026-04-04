@@ -161,6 +161,76 @@ def run_bn_adapt(model_orig, loader, device):
 
 
 # ------------------------------------------------------------------
+# Method 3 - TENT: Test-Time Entropy Minimisation
+# ------------------------------------------------------------------
+
+def run_tent(model_orig, loader, device, lr=1e-3, steps=1):
+    """
+    TENT: minimise prediction entropy w.r.t. BN affine parameters.
+
+    Protocol:
+    1. Deep-copy model, switch BN layers to train mode
+    2. Collect only BN scale (weight) and shift (bias) as optimisable params
+    3. For each batch: forward pass -> compute entropy -> gradient step
+    4. Collect predictions after adaptation
+
+    Based on: Wang et al. (ICLR 2021), Tent: Fully Test-Time Adaptation
+    by Entropy Minimization.
+
+    Parameters
+    ----------
+    lr    : learning rate for BN affine params (default 1e-3)
+    steps : gradient steps per batch (default 1, as per paper)
+    """
+    model = copy.deepcopy(model_orig)
+    model.to(device)
+
+    # Switch BN layers to train mode, freeze all other params
+    for m in model.modules():
+        if isinstance(m, nn.BatchNorm2d):
+            m.train()
+            m.requires_grad_(True)
+            # Keep running stats fixed — only update affine params
+            m.track_running_stats = False
+        else:
+            m.requires_grad_(False)
+
+    # Collect only BN affine parameters
+    bn_params = []
+    for m in model.modules():
+        if isinstance(m, nn.BatchNorm2d):
+            if m.weight is not None:
+                bn_params.append(m.weight)
+            if m.bias is not None:
+                bn_params.append(m.bias)
+
+    optimizer = torch.optim.Adam(bn_params, lr=lr)
+
+    all_scores, all_labels = [], []
+
+    for images, labels in loader:
+        images = images.to(device)
+
+        # Entropy minimisation steps
+        for _ in range(steps):
+            logits  = model(images)
+            probs   = torch.softmax(logits, dim=1)
+            # Shannon entropy: H = -sum(p * log(p))
+            entropy = -(probs * torch.log(probs + 1e-8)).sum(dim=1).mean()
+            optimizer.zero_grad()
+            entropy.backward()
+            optimizer.step()
+
+        # Collect scores after adaptation
+        with torch.no_grad():
+            probs = torch.softmax(model(images), dim=1)
+        all_scores.append(probs[:, 1].detach().cpu().numpy())
+        all_labels.append(labels.numpy())
+
+    return np.concatenate(all_scores), np.concatenate(all_labels)
+
+
+# ------------------------------------------------------------------
 # Main
 # ------------------------------------------------------------------
 
@@ -314,71 +384,3 @@ if __name__ == "__main__":
     main(args)
 
 
-# ------------------------------------------------------------------
-# Method 3 - TENT: Test-Time Entropy Minimisation
-# ------------------------------------------------------------------
-
-def run_tent(model_orig, loader, device, lr=1e-3, steps=1):
-    """
-    TENT: minimise prediction entropy w.r.t. BN affine parameters.
-
-    Protocol:
-    1. Deep-copy model, switch BN layers to train mode
-    2. Collect only BN scale (weight) and shift (bias) as optimisable params
-    3. For each batch: forward pass -> compute entropy -> gradient step
-    4. Collect predictions after adaptation
-
-    Based on: Wang et al. (ICLR 2021), Tent: Fully Test-Time Adaptation
-    by Entropy Minimization.
-
-    Parameters
-    ----------
-    lr    : learning rate for BN affine params (default 1e-3)
-    steps : gradient steps per batch (default 1, as per paper)
-    """
-    model = copy.deepcopy(model_orig)
-    model.to(device)
-
-    # Switch BN layers to train mode, freeze all other params
-    for m in model.modules():
-        if isinstance(m, nn.BatchNorm2d):
-            m.train()
-            m.requires_grad_(True)
-            # Keep running stats fixed — only update affine params
-            m.track_running_stats = False
-        else:
-            m.requires_grad_(False)
-
-    # Collect only BN affine parameters
-    bn_params = []
-    for m in model.modules():
-        if isinstance(m, nn.BatchNorm2d):
-            if m.weight is not None:
-                bn_params.append(m.weight)
-            if m.bias is not None:
-                bn_params.append(m.bias)
-
-    optimizer = torch.optim.Adam(bn_params, lr=lr)
-
-    all_scores, all_labels = [], []
-
-    for images, labels in loader:
-        images = images.to(device)
-
-        # Entropy minimisation steps
-        for _ in range(steps):
-            logits  = model(images)
-            probs   = torch.softmax(logits, dim=1)
-            # Shannon entropy: H = -sum(p * log(p))
-            entropy = -(probs * torch.log(probs + 1e-8)).sum(dim=1).mean()
-            optimizer.zero_grad()
-            entropy.backward()
-            optimizer.step()
-
-        # Collect scores after adaptation
-        with torch.no_grad():
-            probs = torch.softmax(model(images), dim=1)
-        all_scores.append(probs[:, 1].detach().cpu().numpy())
-        all_labels.append(labels.numpy())
-
-    return np.concatenate(all_scores), np.concatenate(all_labels)
