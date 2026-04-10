@@ -162,3 +162,10 @@ python src/experiments/h3_correction.py \
 - Figures are saved as `.pdf` for inclusion in the LaTeX report.
 - All random seeds are fixed to 42 for reproducibility.
 - The test split is **never used during training or model selection**.
+
+## Development Notes
+
+The source code in this repository was developed with assistance from 
+Claude (Anthropic), an AI assistant, used primarily for code generation, 
+debugging, and architectural decisions. All experimental results, 
+analysis, and written conclusions are the author's own.
