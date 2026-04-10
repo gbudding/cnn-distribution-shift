@@ -1,5 +1,6 @@
 # Data — too large for git
-/data/
+/data/*
+!/data/download.md
 
 # Model checkpoints — too large for git
 runs/checkpoints/
