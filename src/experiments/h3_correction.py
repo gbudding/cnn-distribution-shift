@@ -34,7 +34,7 @@ import matplotlib.pyplot as plt
 from scipy.stats import wasserstein_distance
 from torch.utils.data import DataLoader
 
-SRC_DIR = os.path.dirname(os.path.abspath(__file__))  # = src/
+SRC_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # = src/
 if SRC_DIR not in sys.path:
     sys.path.insert(0, SRC_DIR)
 
@@ -337,10 +337,12 @@ def main(args):
               f"mean_recovery={mean_rec:+6.1f}%  "
               f"mean_wasserstein={mean_w:.4f}")
 
-    # Recovery heatmap
-    fig, axes = plt.subplots(1, len(methods), figsize=(5*len(methods), 5),
+    # Recovery heatmap (exclude no_correction: recovery is 0% by construction)
+    plot_methods = [m for m in methods if m != "no_correction"]
+    fig, axes = plt.subplots(1, len(plot_methods),
+                             figsize=(5*len(plot_methods), 5),
                              sharey=True)
-    for ax, method in zip(axes, methods):
+    for ax, method in zip(axes, plot_methods):
         mat = np.zeros((len(ALL_TAGS), len(SEVERITIES)))
         for row in all_results:
             if row["method"] != method:
@@ -349,7 +351,8 @@ def main(args):
             j = SEVERITIES.index(row["severity"])
             mat[i, j] = row["pct_recovery"]
 
-        im = ax.imshow(mat, cmap="RdYlGn", vmin=-20, vmax=120, aspect="auto")
+        VMIN, VMAX = -100, 100
+        im = ax.imshow(mat, cmap="RdYlGn", vmin=VMIN, vmax=VMAX, aspect="auto")
         ax.set_xticks(range(len(SEVERITIES)))
         ax.set_xticklabels([f"S{s}" for s in SEVERITIES], fontsize=9)
         ax.set_yticks(range(len(ALL_TAGS)))
@@ -358,8 +361,17 @@ def main(args):
         for ii in range(len(ALL_TAGS)):
             for jj in range(len(SEVERITIES)):
                 v = mat[ii, jj]
-                c = "black" if 10 < v < 90 else "white"
-                ax.text(jj, ii, f"{v:.0f}%", ha="center",
+                # Format large magnitudes compactly; mark off-scale cells
+                off_scale = v < VMIN or v > VMAX
+                if abs(v) >= 1000:
+                    label = f"{v:.0f}%"
+                else:
+                    label = f"{v:.0f}%"
+                if off_scale:
+                    label += "*"
+                # Choose text colour for contrast against the (clipped) cell colour
+                c = "white" if (v <= VMIN + 20 or v >= VMAX - 20) else "black"
+                ax.text(jj, ii, label, ha="center",
                         va="center", color=c, fontsize=7)
 
     fig.colorbar(im, ax=axes[-1], label="% AUC-YT Recovery")
