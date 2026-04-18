@@ -89,7 +89,7 @@ def plot_heatmap(matrix, row_labels, col_labels, title, cbar_label,
     fig.tight_layout()
     fig.savefig(save_path, dpi=150, bbox_inches="tight")
     plt.close(fig)
-    print(f"  Figure saved → {save_path}")
+    print(f"  Figure saved -> {save_path}")
 
 
 def plot_scatter(results, save_path):
@@ -127,7 +127,7 @@ def plot_scatter(results, save_path):
     fig.tight_layout()
     fig.savefig(save_path, dpi=150, bbox_inches="tight")
     plt.close(fig)
-    print(f"  Figure saved → {save_path}")
+    print(f"  Figure saved -> {save_path}")
 
 
 def main(args):
@@ -179,7 +179,7 @@ def main(args):
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
         writer.writerows(results)
-    print(f"\nFull results → {csv_path}")
+    print(f"\nFull results -> {csv_path}")
 
     # ---- Per-tag summary with t-test ----------------------------
     summary = []
@@ -223,7 +223,7 @@ def main(args):
                            "significance"])
         writer.writeheader()
         writer.writerows(summary)
-    print(f"\nSummary → {summary_path}")
+    print(f"\nSummary -> {summary_path}")
 
     # ---- Heatmaps -----------------------------------------------
     # Build matrices [n_tags × n_severities]

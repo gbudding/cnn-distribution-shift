@@ -138,7 +138,7 @@ def plot_curve(thresholds, yields_dict, title="Yield-Threshold Curve",
 
     if save_path:
         fig.savefig(save_path, dpi=150, bbox_inches="tight")
-        print(f"  Figure saved → {save_path}")
+        print(f"  Figure saved -> {save_path}")
     plt.close(fig)
 
 

@@ -156,7 +156,7 @@ def main(args):
             f, fieldnames=["tag", "severity", "auc_yt", "delta_auc_yt"])
         writer.writeheader()
         writer.writerows(all_results)
-    print(f"\nResults table → {csv_path}")
+    print(f"\nResults table -> {csv_path}")
 
     # ---- Figures -------------------------------------------------
     # 1. Individual corruptions at severity 3 (representative mid-point)
